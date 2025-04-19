@@ -14,8 +14,8 @@ def scan_blocks(chain, start_block, end_block, contract_address, eventfile='depo
     end_block - integer last block to scan
     contract_address - the address of the deployed contract
 
-	This function reads "Deposit" events from the specified contract, 
-	and writes information about the events to the file "deposit_logs.csv"
+    This function reads "Deposit" events from the specified contract, 
+    and writes information about the events to the file "deposit_logs.csv"
     """
     if chain == 'avax':
         api_url = f"https://api.avax-test.network/ext/bc/C/rpc" #AVAX C-chain testnet
@@ -50,14 +50,46 @@ def scan_blocks(chain, start_block, end_block, contract_address, eventfile='depo
     else:
         print( f"Scanning blocks {start_block} - {end_block} on {chain}" )
 
+    # Initialize a list to store all events
+    all_events = []
+    
     if end_block - start_block < 30:
         event_filter = contract.events.Deposit.create_filter(from_block=start_block,to_block=end_block,argument_filters=arg_filter)
         events = event_filter.get_all_entries()
-        #print( f"Got {len(events)} entries for block {block_num}" )
-        # TODO YOUR CODE HERE
+        all_events.extend(events)
     else:
         for block_num in range(start_block,end_block+1):
             event_filter = contract.events.Deposit.create_filter(from_block=block_num,to_block=block_num,argument_filters=arg_filter)
             events = event_filter.get_all_entries()
-            #print( f"Got {len(events)} entries for block {block_num}" )
-            # TODO YOUR CODE HERE
+            all_events.extend(events)
+    
+    # Create a DataFrame to store the event data
+    if all_events:
+        event_data = []
+        for event in all_events:
+            event_data.append({
+                'chain': chain,
+                'token': event.args.token,
+                'recipient': event.args.recipient,
+                'amount': event.args.amount,
+                'transactionHash': event.transactionHash.hex(),
+                'address': contract_address
+            })
+        
+        # Create DataFrame
+        df = pd.DataFrame(event_data)
+        
+        # Check if file exists to determine if we need to write headers
+        file_exists = Path(eventfile).is_file()
+        
+        # Write to CSV
+        if file_exists:
+            # Append to existing file without headers
+            df.to_csv(eventfile, mode='a', header=False, index=False)
+        else:
+            # Create new file with headers
+            df.to_csv(eventfile, index=False)
+        
+        print(f"Recorded {len(all_events)} Deposit events to {eventfile}")
+    else:
+        print(f"No Deposit events found in the specified block range.")
